@@ -3,7 +3,7 @@ members = ["boring", "boring-sys", "tokio-boring"]
 resolver = "2"
 
 [workspace.package]
-version = "4.15.13"
+version = "4.15.15"
 repository = "https://github.com/0x676e67/boring2"
 edition = "2021"
 
