@@ -11,6 +11,9 @@ use std::sync::OnceLock;
 use crate::config::Config;
 
 mod config;
+mod prefix;
+
+static SYMBOL_NAMESPACE: OnceLock<prefix::SymbolNamespace> = OnceLock::new();
 
 fn should_use_cmake_cross_compilation(config: &Config) -> bool {
     if config.host == config.target {
@@ -591,8 +594,41 @@ fn built_boring_source_path(config: &Config) -> &PathBuf {
             cfg.define("FIPS", "1");
         }
 
-        cfg.build_target("ssl").build();
-        cfg.build_target("crypto").build()
+        if config.features.prefix_symbols {
+            let format = prefix::ObjectFormat::from_target_os(&config.target_os)
+                .expect("The target must support BoringSSL symbol prefixing.");
+            cfg.out_dir(config.out_dir.join("unprefixed"));
+            cfg.build_target("ssl").build();
+            let unprefixed_path = cfg.build_target("crypto").build();
+            let symbols =
+                prefix::read_symbols(get_boringssl_source_path(config), &unprefixed_path, format)
+                    .expect("The unprefixed BoringSSL archives must have readable C symbols.");
+            let include_path = config.out_dir.join("symbol-prefix-include");
+            prefix::generate_headers(get_boringssl_source_path(config), &include_path, &symbols)
+                .expect("The BoringSSL symbol prefix headers must be generated successfully.");
+            let namespace = prefix::SymbolNamespace::new(symbols, format, &config.target_arch);
+            cfg.out_dir(&config.out_dir)
+                .define(
+                    "CMAKE_PROJECT_INCLUDE",
+                    config.manifest_dir.join("build/prefix.cmake"),
+                )
+                .define("BORINGSSL_PREFIX", prefix::PREFIX)
+                .define("BORINGSSL_PREFIX_INCLUDE", &include_path);
+            cfg.build_target("ssl").build();
+            let path = cfg.build_target("crypto").build();
+            let exported = prefix::read_symbols(get_boringssl_source_path(config), &path, format)
+                .expect("The prefixed BoringSSL archives must have readable C symbols.");
+            namespace
+                .verify(&exported)
+                .expect("The BoringSSL archives must export every C symbol under their namespace.");
+            SYMBOL_NAMESPACE
+                .set(namespace)
+                .expect("The BoringSSL symbol namespace must be initialized once.");
+            path
+        } else {
+            cfg.build_target("ssl").build();
+            cfg.build_target("crypto").build()
+        }
     })
 }
 
@@ -699,7 +735,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=crypto");
     println!("cargo:rustc-link-lib=static=ssl");
 
-   if config.target_os == "windows" {
+    if config.target_os == "windows" {
         // Rust 1.87.0 compat - https://github.com/rust-lang/rust/pull/138233
         println!("cargo:rustc-link-lib=advapi32");
     }
@@ -743,6 +779,10 @@ fn main() {
         .clang_args(get_extra_clang_args_for_bindgen(&config))
         .clang_arg("-I")
         .clang_arg(include_path.display().to_string());
+
+    if let Some(namespace) = SYMBOL_NAMESPACE.get() {
+        builder = builder.parse_callbacks(Box::new(namespace.clone()));
+    }
 
     if let Some(sysroot) = &config.env.sysroot {
         builder = builder

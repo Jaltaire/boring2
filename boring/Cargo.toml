@@ -17,6 +17,7 @@ features = ["pq-experimental", "underscore-wildcards"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
+prefix-symbols = ["boring-sys/prefix-symbols"]
 # Controlling the build
 
 # Use a FIPS-validated version of BoringSSL. This feature sets "fips-compat".
@@ -88,6 +89,11 @@ flate2 = { workspace = true, optional = true }
 zstd = { workspace = true, optional = true }
 
 [dev-dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 hex = { workspace = true }
 rusty-hook = { workspace = true }
 brotli = { workspace = true }
+
+[[test]]
+name = "openssl_coexistence"
+required-features = ["prefix-symbols"]

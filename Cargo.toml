@@ -18,7 +18,7 @@ boring-sys = { package = "boring-sys2", version = "4.15.13", path = "./boring-sy
 boring = { package = "boring2", version = "4.15.13", path = "./boring" }
 tokio-boring = { package = "tokio-boring2", version = "4.15.13", path = "./tokio-boring" }
 
-bindgen = { version = "0.72.0", default-features = false, features = [
+bindgen = { version = "=0.70.1", default-features = false, features = [
     "runtime",
 ] }
 bytes = "1"

@@ -20,6 +20,11 @@ include = [
     "/cmake/*.cmake",
     # boringssl (non-FIPS)
     "/deps/boringssl/src/util/32-bit-toolchain.cmake",
+    "/deps/boringssl/src/util/read_symbols.go",
+    "/deps/boringssl/src/util/make_prefix_headers.go",
+    "/deps/boringssl/src/util/ar/*.go",
+    "/deps/boringssl/src/go.mod",
+    "/deps/boringssl/src/go.sum",
     "/deps/boringssl/**/*.[chS]",
     "/deps/boringssl/**/*.asm",
     "/deps/boringssl/sources.json",
@@ -58,6 +63,8 @@ features = ["pq-experimental", "underscore-wildcards"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
+prefix-symbols = []
+
 # Use a FIPS-validated version of boringssl.
 fips = []
 
@@ -82,6 +89,10 @@ bindgen = { workspace = true }
 cmake = { workspace = true }
 fs_extra = { workspace = true }
 fslock = { workspace = true }
+
+[dev-dependencies]
+bindgen = { workspace = true }
+tempfile = "3"
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(const_fn)'] }

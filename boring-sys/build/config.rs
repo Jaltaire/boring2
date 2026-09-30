@@ -20,6 +20,7 @@ pub(crate) struct Features {
     pub(crate) pq_experimental: bool,
     pub(crate) rpk: bool,
     pub(crate) underscore_wildcards: bool,
+    pub(crate) prefix_symbols: bool,
 }
 
 pub(crate) struct Env {
@@ -76,6 +77,13 @@ impl Config {
     }
 
     fn check_feature_compatibility(&self) {
+        crate::prefix::validate_build(
+            self.features.prefix_symbols,
+            self.features.fips || self.features.fips_link_precompiled,
+            self.env.path.is_some(),
+            self.env.source_path.is_some(),
+        )
+        .expect("The selected symbol-prefixing build must be compatible.");
         if self.features.fips && self.features.rpk {
             panic!("`fips` and `rpk` features are mutually exclusive");
         }
@@ -116,6 +124,7 @@ impl Features {
         let pq_experimental = env::var_os("CARGO_FEATURE_PQ_EXPERIMENTAL").is_some();
         let rpk = env::var_os("CARGO_FEATURE_RPK").is_some();
         let underscore_wildcards = env::var_os("CARGO_FEATURE_UNDERSCORE_WILDCARDS").is_some();
+        let prefix_symbols = env::var_os("CARGO_FEATURE_PREFIX_SYMBOLS").is_some();
 
         Self {
             fips,
@@ -123,6 +132,7 @@ impl Features {
             pq_experimental,
             rpk,
             underscore_wildcards,
+            prefix_symbols,
         }
     }
 }

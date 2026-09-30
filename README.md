@@ -19,6 +19,19 @@ This package implements only the TLS extensions specification and supports the o
  - tokio TLS adapters: <https://docs.rs/tokio-boring2>
  - FFI bindings: <https://docs.rs/boring-sys2>
 
+## Native Symbol Isolation
+
+The optional `prefix-symbols` feature builds BoringSSL with a versioned C symbol
+namespace so it can coexist with OpenSSL in one executable. It leaves the Rust
+API and TLS implementation unchanged. The build discovers the native exports,
+generates BoringSSL's prefix headers, rebuilds the archives, and rejects missing
+or unprefixed exports before generating the Rust bindings.
+
+This feature requires Go 1.19 or newer at build time. It supports the bundled
+non-FIPS source, not precompiled archives or externally supplied source trees.
+The Dockerfile in `ci/openssl-coexistence.Dockerfile` verifies the namespace and
+TLS interoperability with vendored OpenSSL on Linux.
+
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally
