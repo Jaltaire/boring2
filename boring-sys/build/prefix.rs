@@ -170,7 +170,7 @@ pub(crate) fn read_symbols(
         ObjectFormat::Elf | ObjectFormat::MachO => ("libcrypto.a", "libssl.a"),
     };
     let build_path = build_path.join("build");
-    let source_root = source_path.join("src");
+    let source_root = source_path.join("src").canonicalize()?;
     let output = Command::new("go")
         .args([
             "run",
@@ -200,6 +200,7 @@ pub(crate) fn generate_headers(
     include_path: &Path,
     symbols: &BTreeSet<String>,
 ) -> io::Result<()> {
+    let source_root = source_path.join("src").canonicalize()?;
     std::fs::create_dir_all(include_path)?;
     let symbol_file = include_path.join("symbols.txt");
     std::fs::write(
@@ -213,7 +214,7 @@ pub(crate) fn generate_headers(
         .args(["run", "./util/make_prefix_headers.go", "-out"])
         .arg(include_path)
         .arg(symbol_file)
-        .current_dir(source_path.join("src"))
+        .current_dir(source_root)
         .env("GOWORK", "off")
         .output()?;
     if !output.status.success() {
