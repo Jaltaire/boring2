@@ -697,7 +697,13 @@ fn main() {
     let bssl_dir = built_boring_source_path(&config);
     let build_path = get_boringssl_platform_output_path(&config);
 
-    if config.is_bazel || (config.features.fips && config.env.path.is_some()) {
+    if config.features.prefix_symbols {
+        let format = prefix::ObjectFormat::from_target_os(&config.target_os)
+            .expect("The target must support BoringSSL symbol prefixing.");
+        let libraries = prefix::isolate_archives(bssl_dir, format)
+            .expect("The namespaced BoringSSL archives must have distinct linker names.");
+        println!("cargo:rustc-link-search=native={}", libraries.display());
+    } else if config.is_bazel || (config.features.fips && config.env.path.is_some()) {
         println!(
             "cargo:rustc-link-search=native={}/lib/{}",
             bssl_dir.display(),
@@ -732,8 +738,17 @@ fn main() {
     if let Some(cpp_lib) = get_cpp_runtime_lib(&config) {
         println!("cargo:rustc-link-lib={}", cpp_lib);
     }
-    println!("cargo:rustc-link-lib=static=crypto");
-    println!("cargo:rustc-link-lib=static=ssl");
+    let namespace = if config.features.prefix_symbols {
+        prefix::LibraryNamespace::Isolated
+    } else {
+        prefix::LibraryNamespace::Original
+    };
+    for library in prefix::NativeLibrary::ALL {
+        println!(
+            "cargo:rustc-link-lib=static={}",
+            library.link_name(namespace)
+        );
+    }
 
     if config.target_os == "windows" {
         // Rust 1.87.0 compat - https://github.com/rust-lang/rust/pull/138233

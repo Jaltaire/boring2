@@ -4,7 +4,7 @@ mod prefix;
 use std::collections::BTreeSet;
 use std::io::ErrorKind;
 
-use prefix::{ObjectFormat, SymbolNamespace, PREFIX};
+use prefix::{LibraryNamespace, NativeLibrary, ObjectFormat, SymbolNamespace, PREFIX};
 
 fn symbols(values: &[&str]) -> BTreeSet<String> {
     values.iter().map(|value| (*value).to_owned()).collect()
@@ -234,4 +234,96 @@ fn archives_must_be_present_and_unambiguous() {
             .kind(),
         ErrorKind::NotFound
     );
+}
+
+#[test]
+fn isolated_archives_have_unique_linker_names_on_every_object_format() {
+    for format in [ObjectFormat::Elf, ObjectFormat::MachO, ObjectFormat::Pe] {
+        let root = tempfile::tempdir().unwrap();
+        for library in NativeLibrary::ALL {
+            let directory = root
+                .path()
+                .join("build")
+                .join(library.link_name(LibraryNamespace::Original));
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(
+                directory.join(library.archive_name(format, LibraryNamespace::Original)),
+                library.link_name(LibraryNamespace::Original),
+            )
+            .unwrap();
+        }
+        let output = prefix::isolate_archives(root.path(), format).unwrap();
+        for library in NativeLibrary::ALL {
+            assert_ne!(
+                library.link_name(LibraryNamespace::Original),
+                library.link_name(LibraryNamespace::Isolated)
+            );
+            assert_eq!(
+                std::fs::read_to_string(
+                    output.join(library.archive_name(format, LibraryNamespace::Isolated))
+                )
+                .unwrap(),
+                library.link_name(LibraryNamespace::Original),
+            );
+            assert!(
+                !output
+                    .join(library.archive_name(format, LibraryNamespace::Original))
+                    .exists(),
+                "The isolated search directory must not shadow an original TLS archive."
+            );
+        }
+        assert_eq!(std::fs::read_dir(&output).unwrap().count(), 2);
+        assert_eq!(
+            prefix::isolate_archives(root.path(), format).unwrap(),
+            output
+        );
+    }
+}
+
+#[test]
+fn isolated_archives_reject_missing_sources_and_unwritable_destinations() {
+    let absent = tempfile::tempdir().unwrap();
+    assert_eq!(
+        prefix::isolate_archives(absent.path(), ObjectFormat::Elf)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::NotFound
+    );
+    std::fs::create_dir_all(absent.path().join("build")).unwrap();
+    std::fs::write(absent.path().join("build/libcrypto.a"), []).unwrap();
+    assert_eq!(
+        prefix::isolate_archives(absent.path(), ObjectFormat::Elf)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::NotFound
+    );
+
+    let blocked = tempfile::tempdir().unwrap();
+    std::fs::write(blocked.path().join("namespaced-libraries"), []).unwrap();
+    assert_eq!(
+        prefix::isolate_archives(blocked.path(), ObjectFormat::Elf)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::AlreadyExists
+    );
+
+    let destination = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(destination.path().join("build")).unwrap();
+    for library in NativeLibrary::ALL {
+        std::fs::write(
+            destination
+                .path()
+                .join("build")
+                .join(library.archive_name(ObjectFormat::Elf, LibraryNamespace::Original)),
+            [],
+        )
+        .unwrap();
+    }
+    std::fs::create_dir_all(
+        destination.path().join("namespaced-libraries").join(
+            NativeLibrary::Crypto.archive_name(ObjectFormat::Elf, LibraryNamespace::Isolated),
+        ),
+    )
+    .unwrap();
+    assert!(prefix::isolate_archives(destination.path(), ObjectFormat::Elf).is_err());
 }

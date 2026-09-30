@@ -7,6 +7,55 @@ use bindgen::callbacks::{ItemInfo, ParseCallbacks};
 
 pub(crate) const PREFIX: &str = "B2_RUST_4_15_15";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeLibrary {
+    Crypto,
+    Ssl,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum LibraryNamespace {
+    Original,
+    Isolated,
+}
+
+impl NativeLibrary {
+    pub(crate) const ALL: [Self; 2] = [Self::Crypto, Self::Ssl];
+
+    pub(crate) fn link_name(self, namespace: LibraryNamespace) -> String {
+        let name = match self {
+            Self::Crypto => "crypto",
+            Self::Ssl => "ssl",
+        };
+        match namespace {
+            LibraryNamespace::Original => name.to_owned(),
+            LibraryNamespace::Isolated => format!("{PREFIX}_{name}"),
+        }
+    }
+
+    pub(crate) fn archive_name(self, format: ObjectFormat, namespace: LibraryNamespace) -> String {
+        let name = self.link_name(namespace);
+        match format {
+            ObjectFormat::Pe => format!("{name}.lib"),
+            ObjectFormat::Elf | ObjectFormat::MachO => format!("lib{name}.a"),
+        }
+    }
+}
+
+pub(crate) fn isolate_archives(build_path: &Path, format: ObjectFormat) -> io::Result<PathBuf> {
+    let output_path = build_path.join("namespaced-libraries");
+    std::fs::create_dir_all(&output_path)?;
+    for library in NativeLibrary::ALL {
+        let original = find_archive(
+            &build_path.join("build"),
+            &library.archive_name(format, LibraryNamespace::Original),
+        )?;
+        let isolated = output_path.join(library.archive_name(format, LibraryNamespace::Isolated));
+        std::fs::copy(original, isolated)?;
+    }
+    Ok(output_path)
+}
+
 pub(crate) fn validate_build(
     enabled: bool,
     fips: bool,
@@ -165,10 +214,6 @@ pub(crate) fn read_symbols(
     build_path: &Path,
     format: ObjectFormat,
 ) -> io::Result<BTreeSet<String>> {
-    let (crypto, ssl) = match format {
-        ObjectFormat::Pe => ("crypto.lib", "ssl.lib"),
-        ObjectFormat::Elf | ObjectFormat::MachO => ("libcrypto.a", "libssl.a"),
-    };
     let build_path = build_path.join("build");
     let source_root = source_path.join("src").canonicalize()?;
     let output = Command::new("go")
@@ -178,8 +223,17 @@ pub(crate) fn read_symbols(
             "-obj-file-format",
             format.argument(),
         ])
-        .arg(find_archive(&build_path, crypto)?)
-        .arg(find_archive(&build_path, ssl)?)
+        .args(
+            NativeLibrary::ALL
+                .map(|library| {
+                    find_archive(
+                        &build_path,
+                        &library.archive_name(format, LibraryNamespace::Original),
+                    )
+                })
+                .into_iter()
+                .collect::<io::Result<Vec<_>>>()?,
+        )
         .current_dir(source_root)
         .env("GOWORK", "off")
         .output()?;

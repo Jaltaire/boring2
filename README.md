@@ -23,7 +23,9 @@ This package implements only the TLS extensions specification and supports the o
 
 The optional `prefix-symbols` feature builds BoringSSL with a versioned C symbol
 namespace so it can coexist with OpenSSL in one executable. It leaves the Rust
-API and TLS implementation unchanged. The build discovers the native exports,
+API and TLS implementation unchanged. The native archive names are also isolated
+so linker search-path order cannot select one TLS library's archives while linking
+the other library. The build discovers the native exports,
 generates BoringSSL's prefix headers, rebuilds the archives, and rejects missing
 or unprefixed exports before generating the Rust bindings.
 
